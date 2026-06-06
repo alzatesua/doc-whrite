@@ -49,6 +49,13 @@ export const updatePaciente = (id, data) => request(`/pacientes/${id}/`, { metho
 export const getHistoriales = () => request('/historiales/')
 export const createHistorial = (data) => request('/historiales/', { method: 'POST', body: JSON.stringify(data) })
 
+export function transcribirAudio(audioBlob, idioma = 'es-CO') {
+  const form = new FormData()
+  form.append('audio', audioBlob, 'calibracion-voz.webm')
+  form.append('idioma', idioma)
+  return request('/gemini/transcribir-audio/', { method: 'POST', body: form })
+}
+
 export function estructurarHistoria(data) {
   if (data.formatoArchivo) {
     const form = new FormData()
@@ -56,6 +63,7 @@ export function estructurarHistoria(data) {
     form.append('formato_clinica', data.formatoClinica)
     form.append('instrucciones_clinica', data.instruccionesClinica)
     form.append('formato_base', data.formatoBase)
+    form.append('perfil_voz', data.perfilVoz)
     form.append('formato_archivo', data.formatoArchivo)
     return request('/gemini/estructurar-historia/', { method: 'POST', body: form })
   }
@@ -66,6 +74,7 @@ export function estructurarHistoria(data) {
       formato_clinica: data.formatoClinica,
       instrucciones_clinica: data.instruccionesClinica,
       formato_base: data.formatoBase,
+      perfil_voz: data.perfilVoz,
     }),
   })
 }

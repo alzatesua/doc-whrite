@@ -68,6 +68,8 @@ def serialize_user(user, include_token=False):
         'is_active': user.is_active,
         'is_superuser': user.is_superuser,
         'avatar_url': profile.avatar_url,
+        'dictation_language': profile.dictation_language,
+        'voice_profile': profile.voice_profile,
         'avatar_initials': get_initials(user),
         'last_seen': profile.last_seen.isoformat() if profile.last_seen else None,
         'last_login': user.last_login.isoformat() if user.last_login else None,
@@ -147,7 +149,14 @@ def me(request):
 
         if 'avatar_url' in request.data:
             profile.avatar_url = request.data.get('avatar_url', '')
-            profile.save(update_fields=['avatar_url'])
+
+        if 'dictation_language' in request.data:
+            profile.dictation_language = request.data.get('dictation_language', 'es-CO').strip() or 'es-CO'
+
+        if 'voice_profile' in request.data:
+            profile.voice_profile = request.data.get('voice_profile', '').strip()
+
+        profile.save(update_fields=['avatar_url', 'dictation_language', 'voice_profile', 'last_seen'])
 
         user.save()
     return Response(serialize_user(user, include_token=True))

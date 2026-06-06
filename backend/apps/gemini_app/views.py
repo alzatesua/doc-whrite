@@ -35,6 +35,15 @@ SUPPORTED_TEMPLATE_MIME_TYPES = {
     'text/markdown',
 }
 
+SUPPORTED_AUDIO_MIME_TYPES = {
+    'audio/webm',
+    'audio/ogg',
+    'audio/mpeg',
+    'audio/mp4',
+    'audio/wav',
+    'audio/x-wav',
+}
+
 
 def parse_json_response(text):
     clean_text = (text or '{}').strip()
@@ -50,6 +59,7 @@ def estructurar_historia(request):
     formato_clinica = request.data.get('formato_clinica', 'General').strip()
     instrucciones_clinica = request.data.get('instrucciones_clinica', '').strip()
     formato_base = request.data.get('formato_base', '').strip()
+    perfil_voz = request.data.get('perfil_voz', '').strip()
     formato_archivo = request.FILES.get('formato_archivo')
 
     if not transcripcion:
@@ -76,6 +86,9 @@ Formato de clinica:
 
 Instrucciones propias:
 {instrucciones_clinica or 'Sin instrucciones adicionales.'}
+
+Perfil de voz y dictado del doctor:
+{perfil_voz or 'Sin perfil de voz configurado.'}
 
 Texto base adicional:
 {formato_base or 'No se proporciono texto base.'}
@@ -108,3 +121,43 @@ Transcripcion:
         return Response({'detail': f'Gemini no pudo estructurar la historia: {exc}'}, status=status.HTTP_502_BAD_GATEWAY)
 
     return Response({field: str(data.get(field, '') or '') for field in HISTORIA_SCHEMA})
+
+
+@api_view(['POST'])
+def transcribir_audio(request):
+    audio = request.FILES.get('audio')
+    idioma = request.data.get('idioma', 'es-CO').strip() or 'es-CO'
+
+    if not audio:
+        return Response({'detail': 'El audio es obligatorio.'}, status=status.HTTP_400_BAD_REQUEST)
+    if audio.size > 12 * 1024 * 1024:
+        return Response({'detail': 'El audio no puede superar 12 MB.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    mime_type = audio.content_type or 'audio/webm'
+    if mime_type not in SUPPORTED_AUDIO_MIME_TYPES:
+        return Response({'detail': f'Tipo de audio no soportado: {mime_type}'}, status=status.HTTP_400_BAD_REQUEST)
+
+    api_key = os.getenv('GEMINI_API_KEY')
+    if not api_key:
+        return Response({'detail': 'No esta configurada GEMINI_API_KEY.'}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+    prompt = f"""
+Transcribe este audio clinico de calibracion de voz.
+Idioma esperado: {idioma}.
+Devuelve solo el texto transcrito, sin explicaciones.
+"""
+
+    try:
+        client = genai.Client(api_key=api_key)
+        response = client.models.generate_content(
+            model=os.getenv('GEMINI_MODEL', 'gemini-2.5-flash'),
+            contents=[
+                prompt,
+                types.Part.from_bytes(data=audio.read(), mime_type=mime_type),
+            ],
+            config=types.GenerateContentConfig(temperature=0.1),
+        )
+    except Exception as exc:
+        return Response({'detail': f'Gemini no pudo transcribir el audio: {exc}'}, status=status.HTTP_502_BAD_GATEWAY)
+
+    return Response({'transcripcion': (response.text or '').strip()})

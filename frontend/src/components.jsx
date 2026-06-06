@@ -117,8 +117,8 @@ export function UserRow({ user, onUpdate, onDisable }) {
           {relativeTime(user.last_seen || user.last_login)}
         </small>
       </div>
-      <div className="user-actions" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-        <div style={{ width: '150px' }}>
+      <div className="user-actions">
+        <div className="user-role-select">
           <SearchableSelect 
             value={user.role} 
             options={roles.map(r => ({ value: r, label: r }))} 

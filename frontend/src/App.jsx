@@ -52,7 +52,7 @@ export default function App() {
   const [pageHistoriales, setPageHistoriales] = useState(1)
   const [pageUsuarios, setPageUsuarios] = useState(1)
   const PAGE_SIZE = 12;
-  const [profileForm, setProfileForm] = useState({ username: '', first_name: '', last_name: '', email: '', current_password: '', new_password: '', confirm_password: '' })
+  const [profileForm, setProfileForm] = useState({ username: '', first_name: '', last_name: '', email: '', dictation_language: 'es-CO', voice_profile: '', current_password: '', new_password: '', confirm_password: '' })
   const [formato, setFormato] = useState(() => localStorage.getItem('formato') || 'general')
   const [instrucciones, setInstrucciones] = useState(() => localStorage.getItem('instrucciones') || formatos.general)
   const [formatoBase, setFormatoBase] = useState(() => localStorage.getItem('formatoBase') || '')
@@ -115,6 +115,8 @@ export default function App() {
       first_name: session.first_name || '',
       last_name: session.last_name || '',
       email: session.email || '',
+      dictation_language: session.dictation_language || 'es-CO',
+      voice_profile: session.voice_profile || '',
     }))
   }, [session?.id])
 
@@ -219,6 +221,8 @@ export default function App() {
   }
 
   async function runGemini() {
+    setError('')
+    setMessage('')
     if (!historial.transcripcion_audio.trim()) {
       setError('Primero dicta o escribe la transcripcion.')
       return
@@ -231,6 +235,7 @@ export default function App() {
         instruccionesClinica: instrucciones,
         formatoBase,
         formatoArchivo,
+        perfilVoz: session?.voice_profile || '',
       })
       setHistorial((current) => ({ ...current, ...Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== '')) }))
       setMessage('Historia completada por IA.')
@@ -242,31 +247,59 @@ export default function App() {
   }
 
   function toggleDictation() {
+    setError('')
+    setMessage('')
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
     if (!SpeechRecognition) {
-      setError('Este navegador no soporta dictado por voz.')
+      setError('Este navegador no soporta dictado por voz. Usa Chrome o Edge en localhost/HTTPS.')
       return
     }
     if (listening && recognitionRef.current) {
       recognitionRef.current.stop()
       return
     }
+    const baseTranscript = historial.transcripcion_audio.trim()
+    const finalSegments = {}
     const recognition = new SpeechRecognition()
-    recognition.lang = 'es-CO'
+    recognition.lang = session?.dictation_language || 'es-CO'
     recognition.continuous = true
     recognition.interimResults = true
+    recognition.onstart = () => setListening(true)
     recognition.onresult = (event) => {
-      let text = ''
+      const interimSegments = []
       for (let i = event.resultIndex; i < event.results.length; i += 1) {
-        if (event.results[i].isFinal) text += `${event.results[i][0].transcript} `
+        const transcript = event.results[i][0].transcript.trim()
+        if (!transcript) continue
+        if (event.results[i].isFinal) finalSegments[i] = transcript
+        else interimSegments.push(transcript)
       }
-      if (text) setHistorial((current) => ({ ...current, transcripcion_audio: `${current.transcripcion_audio} ${text}`.trim() }))
+      const nextTranscript = [
+        baseTranscript,
+        ...Object.values(finalSegments),
+        ...interimSegments,
+      ].filter(Boolean).join(' ')
+      if (nextTranscript) setHistorial((current) => ({ ...current, transcripcion_audio: nextTranscript }))
     }
-    recognition.onend = () => setListening(false)
-    recognition.onerror = () => setError('No se pudo usar el microfono.')
+    recognition.onend = () => {
+      recognitionRef.current = null
+      setListening(false)
+    }
+    recognition.onerror = (event) => {
+      const reason = event.error === 'not-allowed'
+        ? 'Permiso del microfono denegado.'
+        : event.error === 'no-speech'
+          ? 'No se detecto voz. Intenta hablar mas cerca del microfono.'
+          : `No se pudo usar el microfono (${event.error || 'error desconocido'}).`
+      setError(reason)
+    }
     recognitionRef.current = recognition
-    recognition.start()
-    setListening(true)
+    try {
+      recognition.start()
+    } catch (err) {
+      setError(`No se pudo iniciar el dictado. ${err.message}`)
+      recognitionRef.current = null
+      setListening(false)
+    }
   }
 
   async function saveUsuario(event) {
@@ -298,13 +331,15 @@ export default function App() {
     setMessage('')
     if (profileForm.new_password && profileForm.new_password !== profileForm.confirm_password) {
       setError('La confirmacion de contrasena no coincide.')
-      return
+      return false
     }
     const payload = {
       username: profileForm.username,
       first_name: profileForm.first_name,
       last_name: profileForm.last_name,
       email: profileForm.email,
+      dictation_language: profileForm.dictation_language || 'es-CO',
+      voice_profile: profileForm.voice_profile,
     }
     if (profileForm.new_password) {
       payload.current_password = profileForm.current_password
@@ -317,8 +352,10 @@ export default function App() {
       setProfileForm((current) => ({ ...current, current_password: '', new_password: '', confirm_password: '' }))
       setMessage('Perfil actualizado.')
       if (isAdmin) await loadUsuarios()
+      return true
     } catch (err) {
       setError(`No se pudo actualizar el perfil. ${err.message}`)
+      return false
     }
   }
 

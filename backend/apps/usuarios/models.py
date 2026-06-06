@@ -5,6 +5,8 @@ from django.db import models
 class PerfilUsuario(models.Model):
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='perfil')
     avatar_url = models.TextField(blank=True)
+    dictation_language = models.CharField(max_length=16, default='es-CO')
+    voice_profile = models.TextField(blank=True)
     last_seen = models.DateTimeField(null=True, blank=True)
 
     def __str__(self):
