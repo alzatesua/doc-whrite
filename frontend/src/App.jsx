@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Activity, Camera, CheckCircle, Circle, File, FileText, Key, LogOut, Mic, MicOff, Moon, Pause, Play, RefreshCw, Save, Settings, Sparkles, Stethoscope, Sun, Trash, User, UserCheck, UserPlus, UserX, Users } from 'lucide-react'
+import { Activity, AlertCircle, BarChart3, Camera, CheckCircle, Circle, ClipboardList, Edit, File, FileText, Key, LogOut, Mic, MicOff, Moon, Pause, Play, RefreshCw, Save, Search, Settings, Sparkles, Stethoscope, Sun, Trash, User, UserCheck, UserPlus, UserX, Users } from 'lucide-react'
 import {
   createHistorial,
   createPaciente,
@@ -14,70 +14,17 @@ import {
   saveAuthSession,
   updateMe,
   updateUsuario,
+  updatePaciente,
 } from './api'
-
-const roles = ['Administrador', 'Medico', 'Odontologo', 'Administrativo']
-const formatos = {
-  general: 'Informe narrativo claro con motivo, antecedentes, hallazgos, diagnostico, conducta y plan.',
-  soap: 'Organizar con encabezados: Subjetivo, Objetivo, Analisis y Plan.',
-  urgencias: 'Priorizar motivo, signos vitales, impresion diagnostica, conducta inmediata y criterios de alarma.',
-  control: 'Enfocar en evolucion, adherencia, respuesta al tratamiento, ajustes y seguimiento.',
-  odontologia: 'Cita dental: motivo odontologico, hallazgos, dientes/superficies, procedimiento, diagnostico, plan y control.',
-}
-
-const emptyPaciente = {
-  tipo_documento: 'CC',
-  numero_documento: '',
-  nombre: '',
-  apellido: '',
-  fecha_nacimiento: '',
-  sexo: 'M',
-  telefono: '',
-  email: '',
-  direccion: '',
-  eps: '',
-}
-
-const emptyHistorial = {
-  paciente: '',
-  doctor: '',
-  temperatura: '',
-  presion_arterial: '',
-  frecuencia_cardiaca: '',
-  frecuencia_respiratoria: '',
-  peso: '',
-  talla: '',
-  motivo_consulta: '',
-  enfermedad_actual: '',
-  antecedentes: '',
-  examen_fisico: '',
-  diagnostico: '',
-  tratamiento: '',
-  observaciones: '',
-  informe_clinico: '',
-  transcripcion_audio: '',
-}
-
-const emptyUsuario = {
-  username: '',
-  password: '',
-  first_name: '',
-  last_name: '',
-  email: '',
-  role: 'Medico',
-  is_active: true,
-}
-
-function relativeTime(value) {
-  if (!value) return 'Sin registro'
-  const minutes = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 60000))
-  if (minutes < 1) return 'Conectado ahora'
-  if (minutes < 60) return `Conectado hace ${minutes} min`
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `Conectado hace ${hours} h`
-  const days = Math.floor(hours / 24)
-  return `Conectado hace ${days} dia${days === 1 ? '' : 's'}`
-}
+import { roles, formatos, emptyPaciente, emptyHistorial, emptyUsuario, relativeTime } from './constants'
+import { Panel, UserRow, Notification } from './components'
+import FormatoSection from './FormatoSection'
+import ConsultaSection from './ConsultaSection'
+import PacienteFormSection from './PacienteFormSection'
+import PacientesListSection from './PacientesListSection'
+import PerfilSection from './PerfilSection'
+import UsuariosSection from './UsuariosSection'
+import MetricsSection from './MetricsSection'
 
 export default function App() {
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light')
@@ -94,9 +41,17 @@ export default function App() {
   const [pacientes, setPacientes] = useState([])
   const [historiales, setHistoriales] = useState([])
   const [usuarios, setUsuarios] = useState([])
+  const [searchQuery, setSearchQuery] = useState('')
   const [paciente, setPaciente] = useState(emptyPaciente)
   const [historial, setHistorial] = useState(emptyHistorial)
   const [usuario, setUsuario] = useState(emptyUsuario)
+  const [showPacienteForm, setShowPacienteForm] = useState(false)
+  const [showConsultaForm, setShowConsultaForm] = useState(false)
+  const [showUserForm, setShowUserForm] = useState(false)
+  const [pagePacientes, setPagePacientes] = useState(1)
+  const [pageHistoriales, setPageHistoriales] = useState(1)
+  const [pageUsuarios, setPageUsuarios] = useState(1)
+  const PAGE_SIZE = 12;
   const [profileForm, setProfileForm] = useState({ username: '', first_name: '', last_name: '', email: '', current_password: '', new_password: '', confirm_password: '' })
   const [formato, setFormato] = useState(() => localStorage.getItem('formato') || 'general')
   const [instrucciones, setInstrucciones] = useState(() => localStorage.getItem('instrucciones') || formatos.general)
@@ -108,6 +63,14 @@ export default function App() {
 
   const isAdmin = session?.role === 'Administrador' || session?.is_superuser
   const pacientesById = useMemo(() => Object.fromEntries(pacientes.map((p) => [p.id, `${p.nombre} ${p.apellido}`])), [pacientes])
+
+  const filteredPacientes = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim()
+    if (!q) return pacientes
+    return pacientes.filter(p => 
+      `${p.nombre} ${p.apellido} ${p.numero_documento}`.toLowerCase().includes(q)
+    )
+  }, [pacientes, searchQuery])
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
@@ -183,6 +146,16 @@ export default function App() {
     }
   }, [session?.token])
 
+  useEffect(() => {
+    if (message || error) {
+      const timer = setTimeout(() => {
+        setMessage('')
+        setError('')
+      }, 5000)
+      return () => clearTimeout(timer)
+    }
+  }, [message, error])
+
   async function doLogin(event) {
     event.preventDefault()
     setError('')
@@ -206,13 +179,19 @@ export default function App() {
   async function savePaciente(event) {
     event.preventDefault()
     try {
-      const created = await createPaciente(paciente)
+      if (paciente.id) {
+        await updatePaciente(paciente.id, paciente)
+        setMessage('Información del paciente actualizada.')
+      } else {
+        const created = await createPaciente(paciente)
+        setHistorial((current) => ({ ...current, paciente: String(created.id) }))
+        setMessage('Paciente creado.')
+      }
+      setShowPacienteForm(false)
       setPaciente(emptyPaciente)
-      setHistorial((current) => ({ ...current, paciente: String(created.id) }))
-      setMessage('Paciente creado.')
       await loadData()
     } catch (err) {
-      setError(`No se pudo crear paciente. ${err.message}`)
+      setError(`No se pudo procesar la solicitud. ${err.message}`)
     }
   }
 
@@ -232,6 +211,7 @@ export default function App() {
       await createHistorial(payload)
       setHistorial((current) => ({ ...emptyHistorial, paciente: current.paciente }))
       setMessage('Consulta guardada.')
+      setShowConsultaForm(false)
       await loadData()
     } catch (err) {
       setError(`No se pudo guardar consulta. ${err.message}`)
@@ -295,6 +275,7 @@ export default function App() {
       await createUsuario(usuario)
       setUsuario(emptyUsuario)
       setMessage('Usuario creado.')
+      setShowUserForm(false)
       await loadUsuarios()
     } catch (err) {
       setError(`No se pudo crear usuario. ${err.message}`)
@@ -362,12 +343,12 @@ export default function App() {
   if (!session) {
     return (
       <main className="login-shell">
+        <Notification message={message} error={error} onClose={() => { setMessage(''); setError(''); }} />
         <form className="login-panel" onSubmit={doLogin}>
           <p className="eyebrow"><Stethoscope size={14} /> Sistema medico</p>
           <h1>Doc Write</h1>
           <input value={login.username} onChange={(e) => setLogin({ ...login, username: e.target.value })} placeholder="Usuario" autoComplete="username" />
           <input type="password" value={login.password} onChange={(e) => setLogin({ ...login, password: e.target.value })} placeholder="Contrasena" autoComplete="current-password" />
-          {error && <div className="notice error">{error}</div>}
           <button>Ingresar</button>
           <button type="button" className="ghost" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />} {theme === 'dark' ? 'Modo claro' : 'Modo oscuro'}</button>
         </form>
@@ -377,6 +358,7 @@ export default function App() {
 
   return (
     <main className="app">
+      <Notification message={message} error={error} onClose={() => { setMessage(''); setError(''); }} />
       <header className="topbar">
         <div>
           <h1>Doc Write</h1>
@@ -395,188 +377,41 @@ export default function App() {
       <nav className="tabs">
         {[
           ['formato', <><FileText size={16} /> Formato</>],
-          ['consulta', <><Activity size={16} /> Consulta</>],
-          ['paciente', <><UserPlus size={16} /> Paciente</>],
+          ['consulta', <><Activity size={16} /> Consulta ({historiales.length})</>],
           ['pacientes', <><Users size={16} /> Pacientes ({pacientes.length})</>],
-          ['historiales', <><File size={16} /> Historiales ({historiales.length})</>],
+          ['metrics', <><BarChart3 size={16} /> Métricas</>],
           ['perfil', <><Settings size={16} /> Perfil</>],
           ...(isAdmin ? [['usuarios', <><UserCheck size={16} /> Usuarios ({usuarios.length})</>]] : []),
         ].map(([id, label]) => <button key={id} className={tab === id ? 'active' : ''} onClick={() => setTab(id)}>{label}</button>)}
       </nav>
 
-      {(message || error) && <div className={error ? 'notice error' : 'notice'}>{error || message}</div>}
-
       <section className="content">
-        {tab === 'formato' && (
-          <Panel title={<><FileText size={20} /> Formato de informe</>} subtitle="Carga el documento real de la clinica o escribe instrucciones.">
-            <div className="format-grid">
-              {Object.entries(formatos).map(([key, text]) => <button key={key} className={formato === key ? 'format-card active' : 'format-card'} onClick={() => { setFormato(key); setInstrucciones(text) }}><strong>{key}</strong><span>{text}</span></button>)}
-            </div>
-            <label><FileText size={16} /> Documento base PDF/Word/Excel<input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.md" onChange={(e) => setFormatoArchivo(e.target.files?.[0] || null)} /></label>
-            <textarea rows="5" value={instrucciones} onChange={(e) => setInstrucciones(e.target.value)} />
-            <textarea rows="10" value={formatoBase} onChange={(e) => setFormatoBase(e.target.value)} placeholder="Texto adicional del formato..." />
-          </Panel>
-        )}
-
+        {tab === 'formato' && <FormatoSection formato={formato} setFormato={setFormato} instrucciones={instrucciones} setInstrucciones={setInstrucciones} formatoBase={formatoBase} setFormatoBase={setFormatoBase} setFormatoArchivo={setFormatoArchivo} formatoArchivo={formatoArchivo} />}
         {tab === 'consulta' && (
-          <Panel title={<><Activity size={20} /> Nueva consulta</>} subtitle={`Formato activo: ${formato}`}>
-            <form onSubmit={saveHistorial} className="grid-form">
-              <label><User size={16} /> Paciente<select value={historial.paciente} onChange={(e) => setHistorial({ ...historial, paciente: e.target.value })}>{pacientes.map((p) => <option key={p.id} value={p.id}>{p.nombre} {p.apellido}</option>)}</select></label>
-              <label><Stethoscope size={16} /> Doctor<input required value={historial.doctor} onChange={(e) => setHistorial({ ...historial, doctor: e.target.value })} /></label>
-              <label className="wide"><Mic size={16} /> Transcripcion<textarea rows="5" value={historial.transcripcion_audio} onChange={(e) => setHistorial({ ...historial, transcripcion_audio: e.target.value })} /></label>
-              <div className="actions wide"><button type="button" onClick={toggleDictation}>{listening ? <><MicOff size={16} /> Detener</> : <><Mic size={16} /> Dictar</>}</button><button type="button" disabled={aiLoading} onClick={runGemini}>{aiLoading ? <><Activity size={16} /> Procesando...</> : <><Sparkles size={16} /> Auto-completar</>}</button></div>
-              {['temperatura', 'presion_arterial', 'frecuencia_cardiaca', 'frecuencia_respiratoria', 'peso', 'talla'].map((field) => <label key={field}>{field}<input value={historial[field]} onChange={(e) => setHistorial({ ...historial, [field]: e.target.value })} /></label>)}
-              {['motivo_consulta', 'enfermedad_actual', 'antecedentes', 'examen_fisico', 'diagnostico', 'tratamiento', 'observaciones', 'informe_clinico'].map((field) => <label key={field} className="wide">{field}<textarea rows={field === 'informe_clinico' ? 8 : 3} value={historial[field]} onChange={(e) => setHistorial({ ...historial, [field]: e.target.value })} /></label>)}
-              <button className="wide"><Save size={16} /> Guardar</button>
-            </form>
-          </Panel>
+          <ConsultaSection 
+            show={showConsultaForm}
+            onClose={() => setShowConsultaForm(false)}
+            onOpen={() => setShowConsultaForm(true)}
+            historiales={historiales}
+            pacientesById={pacientesById}
+            historial={historial} 
+            setHistorial={setHistorial} 
+            pacientes={pacientes} 
+            saveHistorial={saveHistorial} 
+            toggleDictation={toggleDictation} 
+            listening={listening} 
+            aiLoading={aiLoading} 
+            runGemini={runGemini} 
+            formato={formato}
+            usuarios={usuarios}
+            page={pageHistoriales} setPage={setPageHistoriales} pageSize={PAGE_SIZE}
+          />
         )}
-
-        {tab === 'paciente' && (
-          <Panel title={<><UserPlus size={20} /> Registrar paciente</>} subtitle="Datos basicos del paciente.">
-            <form className="grid-form" onSubmit={savePaciente}>
-              {Object.keys(emptyPaciente).map((field) => field === 'sexo' ? <label key={field}>{field}<select value={paciente[field]} onChange={(e) => setPaciente({ ...paciente, [field]: e.target.value })}><option value="M">Masculino</option><option value="F">Femenino</option><option value="O">Otro</option></select></label> : <label key={field}>{field}<input required={['numero_documento', 'nombre', 'apellido', 'fecha_nacimiento'].includes(field)} type={field === 'fecha_nacimiento' ? 'date' : 'text'} value={paciente[field]} onChange={(e) => setPaciente({ ...paciente, [field]: e.target.value })} /></label>)}
-              <button className="wide"><UserPlus size={16} /> Crear</button>
-            </form>
-          </Panel>
-        )}
-
-        {tab === 'pacientes' && (
-          <Panel title={<><Users size={20} /> Pacientes</>} subtitle={`Total: ${pacientes.length} pacientes registrados`}>
-            <div className="patient-grid">
-              {pacientes.map((p) => (
-                <div key={p.id} className="patient-card" onClick={() => { setHistorial({ ...historial, paciente: String(p.id) }); setTab('consulta') }}>
-                  <div className="patient-header">
-                    <div className="patient-avatar">
-                      <User size={24} />
-                    </div>
-                    <div className="patient-info">
-                      <h3>{p.nombre} {p.apellido}</h3>
-                      <p className="patient-id">{p.tipo_documento} {p.numero_documento}</p>
-                    </div>
-                  </div>
-                  <div className="patient-details">
-                    <div className="patient-detail">
-                      <span className="detail-label">Edad</span>
-                      <span className="detail-value">{p.fecha_nacimiento ? new Date().getFullYear() - new Date(p.fecha_nacimiento).getFullYear() : 'N/A'} años</span>
-                    </div>
-                    <div className="patient-detail">
-                      <span className="detail-label">Sexo</span>
-                      <span className="detail-value">{p.sexo === 'M' ? 'Masculino' : p.sexo === 'F' ? 'Femenino' : 'Otro'}</span>
-                    </div>
-                    <div className="patient-detail">
-                      <span className="detail-label">EPS</span>
-                      <span className="detail-value">{p.eps || 'No registrada'}</span>
-                    </div>
-                    <div className="patient-detail">
-                      <span className="detail-label">Teléfono</span>
-                      <span className="detail-value">{p.telefono || 'No registrado'}</span>
-                    </div>
-                  </div>
-                  <div className="patient-footer">
-                    <Activity size={14} />
-                    <span>Crear consulta</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Panel>
-        )}
-        {tab === 'historiales' && (
-          <Panel title={<><File size={20} /> Historiales</>} subtitle={`Total: ${historiales.length} consultas registradas`}>
-            <div className="historial-grid">
-              {historiales.map((h) => (
-                <div key={h.id} className="historial-card">
-                  <div className="historial-header">
-                    <File size={20} />
-                    <div className="historial-info">
-                      <h3>{pacientesById[h.paciente] || 'Paciente desconocido'}</h3>
-                      <p className="historial-date">{new Date(h.created_at || Date.now()).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
-                    </div>
-                  </div>
-                  <div className="historial-body">
-                    <div className="historial-field">
-                      <span className="field-label">Doctor</span>
-                      <span className="field-value">{h.doctor || 'No registrado'}</span>
-                    </div>
-                    <div className="historial-field">
-                      <span className="field-label">Motivo</span>
-                      <span className="field-value">{h.motivo_consulta || 'No registrado'}</span>
-                    </div>
-                    <div className="historial-field">
-                      <span className="field-label">Diagnóstico</span>
-                      <span className="field-value">{h.diagnostico || 'Sin diagnóstico'}</span>
-                    </div>
-                    {h.temperatura && (
-                      <div className="historial-field">
-                        <span className="field-label">Signos vitales</span>
-                        <span className="field-value">
-                          {h.temperatura && `T: ${h.temperatura}°C`}
-                          {h.presion_arterial && ` · PA: ${h.presion_arterial}`}
-                          {h.frecuencia_cardiaca && ` · FC: ${h.frecuencia_cardiaca}`}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Panel>
-        )}
-
-        {tab === 'perfil' && (
-          <Panel title={<><Settings size={20} /> Mi perfil</>} subtitle={`${session.role} · ${relativeTime(session.last_seen || session.last_login)}`}>
-            <div className="profile">
-              <div className="big-avatar">{session.avatar_url ? <img src={session.avatar_url} alt="" /> : <span>{session.avatar_initials}</span>}<label><Camera size={18} /><input type="file" accept="image/*" onChange={uploadAvatar} /></label></div>
-              <div><h2>{`${session.first_name || ''} ${session.last_name || ''}`.trim() || session.username}</h2><p>{session.email || 'Sin email'}</p><p>{session.is_online ? <><CheckCircle size={14} /> Conectado</> : <><Circle size={14} /> Desconectado</>}</p></div>
-            </div>
-            <form className="grid-form profile-form" onSubmit={saveProfile}>
-              <label>Usuario<input value={profileForm.username} onChange={(e) => setProfileForm({ ...profileForm, username: e.target.value })} required autoComplete="username" /></label>
-              <label>Nombres<input value={profileForm.first_name} onChange={(e) => setProfileForm({ ...profileForm, first_name: e.target.value })} autoComplete="given-name" /></label>
-              <label>Apellidos<input value={profileForm.last_name} onChange={(e) => setProfileForm({ ...profileForm, last_name: e.target.value })} autoComplete="family-name" /></label>
-              <label>Correo<input type="email" value={profileForm.email} onChange={(e) => setProfileForm({ ...profileForm, email: e.target.value })} autoComplete="email" /></label>
-              <label>Contrasena actual<input type="password" value={profileForm.current_password} onChange={(e) => setProfileForm({ ...profileForm, current_password: e.target.value })} autoComplete="current-password" /></label>
-              <label>Nueva contrasena<input type="password" value={profileForm.new_password} onChange={(e) => setProfileForm({ ...profileForm, new_password: e.target.value })} autoComplete="new-password" /></label>
-              <label className="wide">Confirmar nueva contrasena<input type="password" value={profileForm.confirm_password} onChange={(e) => setProfileForm({ ...profileForm, confirm_password: e.target.value })} autoComplete="new-password" /></label>
-              <button className="wide"><Save size={16} /> Guardar perfil</button>
-            </form>
-          </Panel>
-        )}
-
-        {tab === 'usuarios' && isAdmin && (
-          <Panel title={<><UserCheck size={20} /> Usuarios</>} subtitle="Administra roles, estado, avatar y presencia.">
-            <form className="grid-form" onSubmit={saveUsuario}>
-              {['username', 'password', 'first_name', 'last_name', 'email'].map((field) => <label key={field}>{field}<input type={field === 'password' ? 'password' : 'text'} value={usuario[field]} onChange={(e) => setUsuario({ ...usuario, [field]: e.target.value })} required={['username', 'password'].includes(field)} /></label>)}
-              <label>role<select value={usuario.role} onChange={(e) => setUsuario({ ...usuario, role: e.target.value })}>{roles.map((role) => <option key={role}>{role}</option>)}</select></label>
-              <button className="wide"><UserPlus size={16} /> Crear</button>
-            </form>
-            <div className="user-list">
-              {usuarios.map((user) => <UserRow key={user.id} user={user} onUpdate={updateUser} onDisable={async () => { await inactivarUsuario(user.id); await loadUsuarios() }} />)}
-            </div>
-          </Panel>
-        )}
+        {tab === 'pacientes' && <PacientesListSection filteredPacientes={filteredPacientes.slice((pagePacientes-1)*PAGE_SIZE, pagePacientes*PAGE_SIZE)} searchQuery={searchQuery} setSearchQuery={setSearchQuery} setHistorial={setHistorial} setTab={setTab} setPaciente={setPaciente} totalCount={filteredPacientes.length} showPacienteForm={showPacienteForm} setShowPacienteForm={setShowPacienteForm} savePaciente={savePaciente} paciente={paciente} page={pagePacientes} setPage={setPagePacientes} pageSize={PAGE_SIZE} />}
+        {tab === 'metrics' && <MetricsSection historiales={historiales} pacientes={pacientes} pacientesById={pacientesById} />}
+        {tab === 'perfil' && <PerfilSection session={session} profileForm={profileForm} setProfileForm={setProfileForm} saveProfile={saveProfile} uploadAvatar={uploadAvatar} />}
+        {tab === 'usuarios' && isAdmin && <UsuariosSection usuarios={usuarios.slice((pageUsuarios-1)*PAGE_SIZE, pageUsuarios*PAGE_SIZE)} showUserForm={showUserForm} setShowUserForm={setShowUserForm} usuario={usuario} setUsuario={setUsuario} saveUsuario={saveUsuario} updateUser={updateUser} inactivarUsuario={inactivarUsuario} loadUsuarios={loadUsuarios} page={pageUsuarios} setPage={setPageUsuarios} pageSize={PAGE_SIZE} />}
       </section>
     </main>
-  )
-}
-
-function Panel({ title, subtitle, children }) {
-  return <article className="panel"><header><h2>{title}</h2>{subtitle && <p>{subtitle}</p>}</header><div className="panel-body">{children}</div></article>
-}
-
-function Card({ title, text, onClick }) {
-  return <button className="card" type="button" onClick={onClick}><strong>{title}</strong><span>{text}</span></button>
-}
-
-function UserRow({ user, onUpdate, onDisable }) {
-  return (
-    <div className={user.is_active ? 'user-row' : 'user-row inactive'}>
-      <div className="admin-avatar">{user.avatar_url ? <img src={user.avatar_url} alt="" /> : <span>{user.avatar_initials}</span>}<i className={user.is_online ? 'online' : ''}></i></div>
-      <div className="user-info"><strong>{`${user.first_name || ''} ${user.last_name || ''}`.trim() || user.username}</strong><span>{user.username} · {user.email || 'Sin email'}</span><small>{user.is_active ? <><CheckCircle size={12} /> Activo</> : <><UserX size={12} /> Inactivo</>} · {user.is_online ? <><Circle size={12} fill="currentColor" /> Online</> : <><Circle size={12} /> Offline</>} · {relativeTime(user.last_seen || user.last_login)}</small></div>
-      <select value={user.role} disabled={user.is_superuser} onChange={(e) => onUpdate(user, { role: e.target.value })}>{roles.map((role) => <option key={role}>{role}</option>)}</select>
-      <button disabled={user.is_superuser} onClick={() => onUpdate(user, { is_active: !user.is_active })}>{user.is_active ? <><Pause size={14} /> Inactivar</> : <><Play size={14} /> Activar</>}</button>
-      <button onClick={() => { const password = window.prompt(`Nueva contrasena para ${user.username}`); if (password) onUpdate(user, { password }) }}><Key size={14} /> Clave</button>
-      <button disabled={user.is_superuser} onClick={onDisable}><Trash size={14} /> Baja</button>
-    </div>
   )
 }

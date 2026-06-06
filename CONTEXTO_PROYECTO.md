@@ -18,12 +18,14 @@ Aplicacion clinica con backend Django/DRF y frontend React/Vite. Permite gestion
 
 ### Componentes de UI
 
-- **Cards de pacientes**: Cards con avatar circular, detalles en grid 2x2 (edad, sexo, EPS, telefono), header con gradiente, footer interactivo
-- **Cards de historiales**: Cards informativas con doctor, motivo, diagnostico, signos vitales y fecha
+- **Cards de pacientes**: Cards con avatar circular, detalles en grid 2x2 (edad, sexo, EPS, telefono), header con gradiente y footer interactivo. Incluye controles de paginación para navegación eficiente.
+- **Cards de historiales**: Cards informativas con doctor, motivo, diagnostico, signos vitales y fecha. Incluye controles de paginación para navegación eficiente.
 - **Paneles**: Contenedores con header, subtitle y body para secciones principales
-- **Tabs**: Navegacion con iconos y labels (Formato, Consulta, Paciente, Pacientes, Historiales, Perfil, Usuarios)
+- **Tabs**: Navegacion simplificada con iconos y labels (Formato, Consulta, Pacientes, Perfil, Usuarios)
 - **Botones**: Estilos con iconos, estados hover y disabled
-- **Formularios**: Grid layouts, labels con iconos, inputs y textareas estilizados
+- **Notificaciones**: Sistema flotante en la parte superior derecha con auto-ocultado e iconos de estado (Check/Alert)
+- **Modales**: Ventanas emergentes con fondo desenfocado (backdrop-filter) para crear/editar pacientes, usuarios y consultas sin perder el contexto
+- **Formularios**: Grid layouts, labels con iconos, inputs, textareas y selectores inteligentes (selects) con buscador integrado para filtrado rápido y ágil de opciones.
 
 ## Backend
 
@@ -62,8 +64,13 @@ El login valida contra usuarios reales de Django. El token es firmado por Django
 
 - React/Vite.
 - Login real.
-- Modo claro/oscuro ultra-moderno.
-- Pestanas con iconos: Formato (FileText), Consulta (Activity), Paciente (UserPlus), Pacientes (Users), Historiales (File), Mi perfil (Settings), Usuarios (UserCheck).
+- Modo claro/oscuro ultra-moderno con persistencia en localStorage.
+- Pestanas unificadas: 
+  - **Formato** (FileText)
+  - **Consulta** (Activity): Integra el listado histórico con paginación y el botón para nueva consulta (Modal).
+  - **Pacientes** (Users): Gestión completa con búsqueda, paginación y edición en Modal.
+  - **Mi perfil** (Settings)
+  - **Usuarios** (UserCheck): Gestión administrativa con paginación y Modal.
 - Panel de usuarios solo para administradores.
 - Avatar de usuario.
 - Estado online/offline y ultima actividad.
@@ -72,17 +79,15 @@ El login valida contra usuarios reales de Django. El token es firmado por Django
 
 ### Iconos Lucide-React
 
-Actividad, Camera, CheckCircle, Circle, File, FileText, Key, LogOut, Mic, MicOff, Moon, Pause, Play, RefreshCw, Save, Settings, Sparkles, Stethoscope, Sun, Trash, User, UserCheck, UserPlus, UserX, Users.
+Activity, AlertCircle, Camera, CheckCircle, Circle, Edit, File, FileText, Key, LogOut, Mic, MicOff, Moon, Pause, Play, RefreshCw, Save, Search, Settings, Sparkles, Stethoscope, Sun, Trash, User, UserCheck, UserPlus, UserX, Users.
 
 ### Secciones
 
 - **Formato de informe**: Cards seleccionables con formatos predefinidos (general, soap, urgencias, control, odontologia), carga de documentos base, instrucciones personalizadas
-- **Nueva consulta**: Formulario con paciente, doctor, transcripcion de voz (SpeechRecognition), auto-completado con IA, signos vitales, campos clinicos completos
-- **Registrar paciente**: Grid form con todos los campos del paciente (documento, nombre, apellido, fecha nacimiento, sexo, telefono, email, direccion, EPS)
-- **Pacientes**: Grid de cards con avatar, informacion demografica, edad calculada automaticamente, footer interactivo para crear consulta
-- **Historiales**: Grid de cards con informacion de consultas previas, doctor, motivo, diagnostico, signos vitales, fecha
+- **Consulta e Historial**: Lista cronológica de atenciones previas. Botón superior para abrir el **Modal de Nueva Consulta** con transcripción de voz y Gemini.
+- **Pacientes**: Buscador reactivo (nombre/documento), paginación optimizada para miles de registros y grid de cards informativas. Botón superior para abrir el **Modal de Registro/Edición** de pacientes con selectores buscables para tipo de documento, sexo y EPS.
 - **Mi perfil**: Avatar grande con camara para cambio de foto, informacion de usuario, estado de conexion y formulario para editar usuario, nombres, apellidos, correo y contrasena
-- **Usuarios**: Tabla con avatar, informacion, estado (Activo/Inactivo), presencia (Online/Offline), selector de rol, acciones (Inactivar/Activar, Clave, Baja)
+- **Usuarios**: Gestión administrativa de cuentas con soporte de paginación. Botón para **Modal de Nuevo Usuario** con buscador en la selección de roles y acciones en fila para gestión de cuentas.
 
 ## Gemini
 
@@ -119,9 +124,16 @@ npm run build  # Produccion
 
 ### Estructura de archivos
 
-- `frontend/src/App.jsx` - Componente principal con toda la logica de UI
-- `frontend/src/styles.css` - Estilos globales con variables CSS para temas claro/oscuro
+- `frontend/src/App.jsx` - Orquestador de estado, navegación y persistencia
+- `frontend/src/constants.js` - Modelos vacíos, opciones de roles y lógica de tiempos relativos
+- `frontend/src/components.jsx` - Componentes reutilizables (Panel, UserRow, Notification, Card)
 - `frontend/src/api.js` - Cliente HTTP con endpoints del backend
+- `frontend/src/styles.css` - Estilos globales con variables CSS para temas claro/oscuro
+- `frontend/src/ConsultaSection.jsx` - Vista unificada de historial y modal de consulta
+- `frontend/src/PacientesListSection.jsx` - Vista de listado, búsqueda y control del modal de pacientes
+- `frontend/src/PacienteFormSection.jsx` - Modal profesional para crear/editar pacientes
+- `frontend/src/UsuariosSection.jsx` - Gestión de usuarios con modal integrado
+- `frontend/src/PerfilSection.jsx` - Gestión de perfil personal
 
 ### Variables CSS
 
@@ -134,4 +146,3 @@ Modo oscuro:
 - `--primary: #3b82f6` (azul brillante)
 - `--primary-2: #60a5fa` (azul claro)
 - `--bg: #0a0a0a`, `--surface: #1a1a1a`, `--surface-2: #2a2a2a`
-

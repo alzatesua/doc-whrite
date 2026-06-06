@@ -45,6 +45,7 @@ export const updateUsuario = (id, data) => request(`/usuarios/${id}/`, { method:
 export const inactivarUsuario = (id) => request(`/usuarios/${id}/`, { method: 'DELETE' })
 export const getPacientes = () => request('/pacientes/')
 export const createPaciente = (data) => request('/pacientes/', { method: 'POST', body: JSON.stringify(data) })
+export const updatePaciente = (id, data) => request(`/pacientes/${id}/`, { method: 'PATCH', body: JSON.stringify(data) })
 export const getHistoriales = () => request('/historiales/')
 export const createHistorial = (data) => request('/historiales/', { method: 'POST', body: JSON.stringify(data) })
 
